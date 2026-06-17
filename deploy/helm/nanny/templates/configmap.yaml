@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nanny.fullname" . }}-config
+  labels:
+    {{- include "nanny.labels" . | nindent 4 }}
+data:
+  NANNY_SERVER_PORT: {{ .Values.service.port | quote }}
+  NANNY_RECONCILE_SECS: {{ .Values.reconcileSecs | quote }}
+  NANNY_DATA_DIR: "/data"
+  NANNY_LLM_BACKEND: {{ .Values.llm.backend | quote }}
+  NANNY_DRY_RUN: {{ .Values.dryRun | quote }}
+  {{- if .Values.logging.json }}
+  NANNY_LOG_JSON: "true"
+  {{- end }}
+  {{- with .Values.logging.syslog }}
+  NANNY_LOG_SYSLOG: {{ . | quote }}
+  {{- end }}
+  {{- if eq .Values.auth.mode "open" }}
+  {{- if not .Values.auth.insecure }}
+  {{- fail "auth.mode=open requires auth.insecure=true (name-only logins) — set a password/ldap instead for any non-demo use" }}
+  {{- end }}
+  NANNY_AUTH_INSECURE: "true"
+  {{- end }}
+  {{- if eq .Values.auth.mode "ldap" }}
+  {{- range $k, $v := .Values.auth.ldap }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  {{- end }}
+  {{- range $k, $v := .Values.llm.extraEnv }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  {{- range $k, $v := .Values.env }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

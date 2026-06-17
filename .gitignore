@@ -1,0 +1,16 @@
+node_modules/
+target/
+dist/
+.next/
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+# secrets / sensitive — keep only *.example
+*.env
+!*.env.example
+*.key
+*.pem
+*.crt
+auth.txt
+data/

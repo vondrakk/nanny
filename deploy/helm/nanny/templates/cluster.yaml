@@ -1,0 +1,29 @@
+{{- if .Values.postgres.enabled }}
+# CloudNativePG Cluster. Requires the CNPG operator (CRDs) installed cluster-wide.
+# CNPG generates the "<name>-app" secret (keys: username/password/dbname/host/port/
+# uri/jdbc-uri); nanny reads its `uri` key as DATABASE_URL. The schema itself is
+# applied idempotently by nanny at startup (db/schema.sql via Store.init_schema).
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ include "nanny.dbCluster" . }}
+  labels:
+    {{- include "nanny.labels" . | nindent 4 }}
+spec:
+  instances: {{ .Values.postgres.instances }}
+  {{- with .Values.postgres.imageName }}
+  imageName: {{ . | quote }}
+  {{- end }}
+  primaryUpdateStrategy: unsupervised
+  bootstrap:
+    initdb:
+      database: {{ .Values.postgres.bootstrapDatabase | quote }}
+      owner: {{ .Values.postgres.bootstrapOwner | quote }}
+  storage:
+    size: {{ .Values.postgres.storage.size | quote }}
+    {{- with .Values.postgres.storage.storageClass }}
+    storageClass: {{ . | quote }}
+    {{- end }}
+  resources:
+    {{- toYaml .Values.postgres.resources | nindent 4 }}
+{{- end }}

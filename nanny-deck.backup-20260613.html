@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nanny — how it works &amp; why it matters</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1b2230; --line:#2a313c; --dim:#7d8590;
+    --ink:#e6edf3; --cyan:#39c5cf; --red:#f85149; --green:#3fb950; --amber:#d29922; --violet:#a371f7;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:16px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial}
+  code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  #deck{height:100vh;width:100vw;overflow:hidden;position:relative}
+  .slide{position:absolute;inset:0;display:none;flex-direction:column;justify-content:center;
+    padding:5vh 7vw;overflow:auto;animation:fade .35s ease}
+  .slide.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  h1{font-size:clamp(34px,6vw,72px);margin:0 0 .2em;line-height:1.05;letter-spacing:-1px}
+  h2{font-size:clamp(24px,3.4vw,40px);margin:0 0 .55em;letter-spacing:-.5px}
+  h2 .k{color:var(--cyan)}
+  p,li{font-size:clamp(15px,1.5vw,21px)}
+  .lead{color:var(--dim);font-size:clamp(17px,2vw,26px);max-width:62ch}
+  .brand{color:var(--cyan);font-weight:800;letter-spacing:.5px}
+  .kicker{color:var(--cyan);font-weight:700;text-transform:uppercase;letter-spacing:3px;font-size:13px;margin-bottom:14px}
+  ul{margin:.2em 0;padding-left:0;list-style:none}
+  ul li{margin:.5em 0;padding-left:1.7em;position:relative}
+  ul li::before{content:"▹";position:absolute;left:0;color:var(--cyan)}
+  ul.plain li::before{content:""}
+  .muted{color:var(--dim)}
+  .grid{display:grid;gap:18px}
+  .cols2{grid-template-columns:1fr 1fr} .cols3{grid-template-columns:1fr 1fr 1fr}
+  @media(max-width:820px){.cols2,.cols3{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .card .ico{font-size:30px;line-height:1;margin-bottom:8px}
+  .card h3{margin:.1em 0 .3em;font-size:clamp(16px,1.7vw,22px)}
+  .card p{margin:.2em 0;color:var(--dim);font-size:15px}
+  .pill{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:4px 12px;
+    font-size:13px;color:var(--dim);margin:3px 6px 3px 0}
+  .pill.cy{color:var(--cyan);border-color:var(--cyan)} .pill.gr{color:var(--green);border-color:var(--green)}
+  .pill.rd{color:var(--red);border-color:var(--red)} .pill.am{color:var(--amber);border-color:var(--amber)}
+  .big{font-size:clamp(40px,7vw,84px);font-weight:800;letter-spacing:-2px;line-height:1}
+  .big.cy{color:var(--cyan)} .big.gr{color:var(--green)} .big.rd{color:var(--red)} .big.am{color:var(--amber)}
+  .stat .lab{color:var(--dim);font-size:14px;text-transform:uppercase;letter-spacing:1px;margin-top:6px}
+  .tag{font:600 12px ui-monospace,monospace;color:var(--violet);background:rgba(163,113,247,.12);
+    border:1px solid rgba(163,113,247,.4);border-radius:6px;padding:2px 8px}
+  table{border-collapse:collapse;width:100%;font-size:clamp(13px,1.4vw,18px)}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600}
+  .ok{color:var(--green)} .open{color:var(--amber)} .crit{color:var(--red)} .cyan{color:var(--cyan)}
+  .note{border-left:3px solid var(--amber);background:rgba(210,153,34,.08);padding:12px 16px;border-radius:0 10px 10px 0;color:#e8d8b0;font-size:15px}
+  .note.cy{border-color:var(--cyan);background:rgba(57,197,207,.08);color:#bfeef1}
+  .note.gr{border-color:var(--green);background:rgba(63,185,80,.08);color:#bfe9c4}
+  .note.rd{border-color:var(--red);background:rgba(248,81,73,.08);color:#f4c4c0}
+  svg{max-width:100%;height:auto;display:block}
+  .center{align-items:center;text-align:center}
+  #bar{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,var(--cyan),var(--violet));z-index:10;transition:width .25s}
+  #help{position:fixed;bottom:14px;left:18px;color:var(--dim);font-size:12px;z-index:10}
+  .dots{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);display:flex;gap:7px;z-index:10;flex-wrap:wrap;max-width:60vw;justify-content:center}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line);cursor:pointer;transition:.2s}
+  .dots i.on{background:var(--cyan);transform:scale(1.25)}
+  #hud{position:fixed;bottom:14px;right:18px;color:var(--dim);font:600 13px ui-monospace,monospace;z-index:10}
+  #hud b{color:var(--cyan)}
+  .ph{border:1px dashed var(--line);border-radius:12px;color:var(--dim);display:flex;align-items:center;
+    justify-content:center;text-align:center;padding:18px;font-size:14px;background:rgba(255,255,255,.015)}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="deck">
+
+<!-- 1 TITLE -->
+<section class="slide active center">
+  <div class="kicker">on-call automation · technical overview</div>
+  <h1><span class="brand">nanny</span> 🍼</h1>
+  <p class="lead">A triage brain bolted onto a Prometheus/Icinga substrate — it investigates alerts, writes the ticket, and decides <em>whether and when</em> to wake a human.</p>
+  <div style="margin-top:26px">
+    <span class="pill cy">read-only &amp; audited</span>
+    <span class="pill cy">adaptive paging</span>
+    <span class="pill cy">LLM optional</span>
+    <span class="pill cy">auth-hardened</span>
+    <span class="pill cy">going stateless on Kubernetes</span>
+  </div>
+  <p class="muted" style="margin-top:28px;font-size:14px">Viktor Vondrak · Director of Operations · DomainTools &nbsp;·&nbsp; <span class="mono">→ / space to advance</span></p>
+</section>
+
+<!-- 2 HONESTY NOTICE -->
+<section class="slide">
+  <div class="kicker">read me first</div>
+  <h2>This deck is deliberately <span class="k">honest</span></h2>
+  <p class="lead">Not a pure pitch. It covers what nanny does well <strong>and</strong> the open risks — including a real security audit (slides 14–17).</p>
+  <div class="grid cols2" style="margin-top:18px">
+    <div class="card"><div class="ico">✅</div><h3>What's true today</h3>
+      <p>How it works, where it adds value, what's been hardened, and what's still in flight.</p></div>
+    <div class="card"><div class="ico">⚠️</div><h3>What's not done</h3>
+      <p>Remaining audit items, LLM risks, and a Kubernetes/HA migration that is <em>built but not yet cluster-verified</em>.</p></div>
+  </div>
+  <div class="note" style="margin-top:20px">Visual honesty too: these are <strong>diagrams &amp; icon glyphs</strong>, not photographs (can't generate real photos offline). Dashed boxes are <strong>placeholders for your screenshots</strong>.</div>
+</section>
+
+<!-- 3 THE PROBLEM -->
+<section class="slide">
+  <div class="kicker">the problem</div>
+  <h2>On-call is <span class="k">noisy, slow, and human-expensive</span></h2>
+  <div class="grid cols3" style="margin-top:10px">
+    <div class="card"><div class="ico">🌙</div><h3>3 a.m. pages for nothing</h3><p>Many alerts clear themselves in minutes — but a human already got woken.</p></div>
+    <div class="card"><div class="ico">🔁</div><h3>Repetitive triage</h3><p>Same runbook lookup, same "is the host down or one check?", every time.</p></div>
+    <div class="card"><div class="ico">📋</div><h3>Thin incident records</h3><p>Tickets opened late, half-filled; the "what did we check?" trail is lost.</p></div>
+  </div>
+  <p class="lead" style="margin-top:22px">nanny's bet: a machine can do the first 10 minutes of triage and only escalate when a human is genuinely needed.</p>
+</section>
+
+<!-- 4 ARCHITECTURE -->
+<section class="slide">
+  <div class="kicker">architecture</div>
+  <h2>One server between your <span class="k">monitoring</span> and your <span class="k">tools</span></h2>
+  <svg viewBox="0 0 1000 380" role="img" aria-label="architecture diagram">
+    <defs>
+      <marker id="ar" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#7d8590"/></marker>
+      <style>.bx{fill:#161b22;stroke:#2a313c} .bt{fill:#e6edf3;font:600 17px ui-sans-serif} .bs{fill:#7d8590;font:13px ui-sans-serif} .ln{stroke:#7d8590;stroke-width:1.6;fill:none;marker-end:url(#ar)}</style>
+    </defs>
+    <rect class="bx" x="20" y="40" width="200" height="64" rx="10"/><text class="bt" x="40" y="70">Icinga2 / Alertmanager</text><text class="bs" x="40" y="90">state of truth + alerts (signed)</text>
+    <rect x="400" y="120" width="220" height="150" rx="14" fill="#11202a" stroke="#39c5cf" stroke-width="2"/>
+    <text x="510" y="158" text-anchor="middle" fill="#39c5cf" font-weight="800" font-size="26">nanny</text>
+    <text class="bs" x="510" y="182" text-anchor="middle">incident brain + API</text>
+    <text class="bs" x="510" y="210" text-anchor="middle">• triage (LLM / none)</text>
+    <text class="bs" x="510" y="232" text-anchor="middle">• adaptive page hold</text>
+    <text class="bs" x="510" y="254" text-anchor="middle">• shared state + audit</text>
+    <rect class="bx" x="790" y="20" width="190" height="48" rx="10"/><text class="bt" x="808" y="49">Jira</text><text class="bs" x="858" y="49">tickets</text>
+    <rect class="bx" x="790" y="86" width="190" height="48" rx="10"/><text class="bt" x="808" y="115">Confluence</text><text class="bs" x="905" y="115">runbooks</text>
+    <rect class="bx" x="790" y="152" width="190" height="48" rx="10"/><text class="bt" x="808" y="181">PagerDuty</text><text class="bs" x="912" y="181">pages</text>
+    <rect class="bx" x="790" y="218" width="190" height="48" rx="10"/><text class="bt" x="808" y="247">Slack</text><text class="bs" x="858" y="247">notify</text>
+    <rect class="bx" x="790" y="284" width="190" height="48" rx="10"/><text class="bt" x="808" y="313">Hosts</text><text class="bs" x="858" y="313">read-only logs (SSH)</text>
+    <rect class="bx" x="20" y="250" width="200" height="64" rx="10"/><text class="bt" x="40" y="280">Operators</text><text class="bs" x="40" y="300">web console + CLI panel</text>
+    <path class="ln" d="M220,72 C320,72 320,170 398,170"/>
+    <path class="ln" d="M220,282 C320,282 320,220 398,220"/>
+    <path class="ln" d="M622,160 C700,110 720,55 788,44"/>
+    <path class="ln" d="M622,180 C700,150 720,115 788,110"/>
+    <path class="ln" d="M622,200 C700,185 720,178 788,176"/>
+    <path class="ln" d="M622,222 C700,250 720,235 788,242"/>
+    <path class="ln" d="M622,240 C700,300 720,305 788,308"/>
+  </svg>
+  <p class="muted" style="margin-top:8px;font-size:14px">Ships as one <span class="tag">localhost/nanny:bundle</span> podman image (nanny + Prometheus + Alertmanager + blackbox). Validated against a real Icinga: <strong>576 hosts / 4,714 checks</strong>.</p>
+</section>
+
+<!-- 5 LIFECYCLE -->
+<section class="slide">
+  <div class="kicker">the core loop</div>
+  <h2>What happens when an alert <span class="k">fires</span></h2>
+  <svg viewBox="0 0 1000 250" role="img" aria-label="incident lifecycle">
+    <defs><marker id="ar2" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#39c5cf"/></marker>
+    <style>.st{fill:#161b22;stroke:#2a313c} .stt{fill:#e6edf3;font:600 15px ui-sans-serif} .sd{fill:#7d8590;font:12px ui-sans-serif} .fl{stroke:#39c5cf;stroke-width:2;fill:none;marker-end:url(#ar2)}</style></defs>
+    <rect class="st" x="10" y="90" width="150" height="70" rx="10"/><text class="stt" x="85" y="120" text-anchor="middle">🔔 Alert</text><text class="sd" x="85" y="140" text-anchor="middle">signed webhook</text>
+    <rect class="st" x="200" y="90" width="160" height="70" rx="10"/><text class="stt" x="280" y="118" text-anchor="middle">🔎 Triage</text><text class="sd" x="280" y="138" text-anchor="middle">gather + write ticket</text>
+    <rect class="st" x="400" y="90" width="170" height="70" rx="10"/><text class="stt" x="485" y="118" text-anchor="middle">⏳ Adaptive hold</text><text class="sd" x="485" y="138" text-anchor="middle">wait the learned window</text>
+    <rect x="610" y="40" width="170" height="60" rx="10" fill="#10241a" stroke="#3fb950"/><text x="695" y="68" text-anchor="middle" fill="#3fb950" font-weight="700" font-size="15">✅ Self-resolved</text><text class="sd" x="695" y="86" text-anchor="middle">no page · learn</text>
+    <rect x="610" y="150" width="170" height="60" rx="10" fill="#241312" stroke="#f85149"/><text x="695" y="178" text-anchor="middle" fill="#f85149" font-weight="700" font-size="15">📟 Page on-call</text><text class="sd" x="695" y="196" text-anchor="middle">still firing after hold</text>
+    <rect class="st" x="820" y="95" width="160" height="70" rx="10"/><text class="stt" x="900" y="123" text-anchor="middle">🙋 Claim / Ack</text><text class="sd" x="900" y="143" text-anchor="middle">suppresses the page</text>
+    <path class="fl" d="M160,125 L196,125"/><path class="fl" d="M360,125 L396,125"/>
+    <path class="fl" d="M570,115 C590,100 590,80 606,72"/><path class="fl" d="M570,135 C590,150 590,170 606,180"/>
+    <path class="fl" d="M780,180 C800,170 800,150 818,140"/>
+  </svg>
+  <p class="lead" style="margin-top:14px">An operator who <strong>claims or acks during the hold</strong> cancels the auto-page — nanny sees a human is on it.</p>
+</section>
+
+<!-- 6 ADAPTIVE PAGING -->
+<section class="slide">
+  <div class="kicker">the key idea</div>
+  <h2>Adaptive paging: <span class="k">learn what self-resolves</span></h2>
+  <div class="grid cols2" style="align-items:center">
+    <div>
+      <ul>
+        <li>Each incident's outcome is recorded per <span class="tag">alertname/service</span> signature.</li>
+        <li>If a signature historically clears itself — <strong>≥3 samples, ≥60% self-resolve</strong> — nanny holds for the <strong>p90 self-resolve time + 30s</strong> before paging.</li>
+        <li>Unknown/flaky signatures get the default <strong>120s</strong>; cap is <strong>900s</strong>.</li>
+        <li>The page fires only for things that <em>actually</em> need a human.</li>
+      </ul>
+      <div class="note cy" style="margin-top:14px">Purely statistical — the hold is learned from history, not the model's opinion. Transparent and explainable.</div>
+    </div>
+    <svg viewBox="0 0 420 240" role="img" aria-label="hold timeline">
+      <style>.axis{stroke:#2a313c;stroke-width:1.5}.t{fill:#7d8590;font:12px ui-sans-serif}</style>
+      <line class="axis" x1="40" y1="200" x2="400" y2="200"/><line class="axis" x1="40" y1="40" x2="40" y2="200"/>
+      <text class="t" x="6" y="44">page?</text><text class="t" x="350" y="222">time →</text>
+      <rect x="40" y="60" width="150" height="140" fill="rgba(210,153,34,.14)" stroke="#d29922" stroke-dasharray="4 4"/>
+      <text class="t" x="52" y="80" fill="#d29922">hold window</text>
+      <path d="M40,170 C90,120 130,90 175,190" fill="none" stroke="#3fb950" stroke-width="3"/>
+      <text class="t" x="120" y="110" fill="#3fb950">most clear here →</text>
+      <line x1="190" y1="40" x2="190" y2="200" stroke="#f85149" stroke-width="2.5"/><text class="t" x="196" y="56" fill="#f85149">page fires</text>
+    </svg>
+  </div>
+</section>
+
+<!-- 7 TRIAGE -->
+<section class="slide">
+  <div class="kicker">the triage agent</div>
+  <h2>A <span class="k">read-only</span> investigator with four tools</h2>
+  <div class="grid cols2" style="margin-top:6px">
+    <div class="card"><div class="ico">📡</div><h3>get_icinga_state</h3><p>Live host + every service check — "is the whole box down, or one check?"</p></div>
+    <div class="card"><div class="ico">📚</div><h3>search_confluence</h3><p>Finds the runbook; the service's <span class="mono">notes_url</span> is also fed in up front.</p></div>
+    <div class="card"><div class="ico">🗂️</div><h3>search_jira</h3><p>Prior incidents for this service and how they resolved.</p></div>
+    <div class="card"><div class="ico">📜</div><h3>fetch_logs</h3><p>Tails <em>allow-listed</em> logs over a locked-down SSH forced command. No shell, ever.</p></div>
+  </div>
+  <div class="note gr" style="margin-top:16px"><strong>Guardrails:</strong> the model never gets a raw shell; every tool call is written to a per-incident audit trail; the loop is turn-capped. It proposes what a human should do — it does not remediate.</div>
+</section>
+
+<!-- 8 LLM CHOICE (NEW) -->
+<section class="slide">
+  <div class="kicker">the brain is a choice</div>
+  <h2>Cloud, local, or <span class="k">no LLM at all</span></h2>
+  <div class="grid cols3" style="margin-top:6px">
+    <div class="card"><div class="ico">☁️</div><h3>Cloud Claude</h3><p>Default. Strongest reasoning. Per-incident token cost; data leaves the network.</p></div>
+    <div class="card"><div class="ico">🖥️</div><h3>Local model</h3><p>Any OpenAI-compatible server (Ollama/vLLM). Fully offline, in-network.</p></div>
+    <div class="card"><div class="ico">🚫</div><h3>No LLM <span class="tag">none</span></h3><p>Deterministic triage: gather live state, runbook, prior incidents, self-resolve history — still tickets &amp; pages. Zero tokens.</p></div>
+  </div>
+  <p class="lead" style="margin-top:20px">Same pipeline, three brains. Adaptive paging and ticketing don't depend on an LLM — so cost and data-egress are a dial, not a requirement.</p>
+</section>
+
+<!-- 9 CONSOLE -->
+<section class="slide">
+  <div class="kicker">the operator console</div>
+  <h2>A zero-dependency <span class="k">web console</span></h2>
+  <div class="grid cols2" style="align-items:center">
+    <div>
+      <ul>
+        <li><strong>Dashboard</strong> — fleet health, clickable counters, live auto-refresh + activity spinner.</li>
+        <li><strong>Triage</strong> — per-incident live state, runbook, analysis + audit, and claim/ack/release buttons.</li>
+        <li><strong>Fleet</strong> — Icinga's live state grouped by host, filterable + paginated.</li>
+        <li><strong>Controls</strong> — one-click integration self-tests, dry-run incident simulator.</li>
+        <li><strong>Log</strong> — everything nanny does, streamed (and forwardable as JSON/syslog).</li>
+      </ul>
+    </div>
+    <div class="ph" style="min-height:230px">📸 placeholder<br><span class="muted">drop a real screenshot of the dashboard / triage tab here</span></div>
+  </div>
+</section>
+
+<!-- 10 VALUE -->
+<section class="slide center">
+  <div class="kicker">why it's valuable</div>
+  <h2>Fewer pages, faster triage, a real paper trail</h2>
+  <div class="grid cols3" style="width:100%;margin-top:10px">
+    <div class="card center stat"><div class="big gr">↓</div><div class="lab">needless 3 a.m. pages — held until proven real</div></div>
+    <div class="card center stat"><div class="big cy">~10 min</div><div class="lab">of first-responder triage done before a human is involved</div></div>
+    <div class="card center stat"><div class="big am">100%</div><div class="lab">of incidents get a ticket + audit trail, automatically</div></div>
+  </div>
+  <p class="lead" style="margin-top:20px">The win isn't "AI ops magic" — it's <strong>removing the repetitive first 10 minutes</strong> and not waking people for self-healing blips.</p>
+</section>
+
+<!-- 11 DEPLOYMENT / K8S (NEW) -->
+<section class="slide">
+  <div class="kicker">deployment &amp; scale</div>
+  <h2><span class="k">Stateless on Kubernetes</span> — built, verifying on a cluster</h2>
+  <div class="grid cols2">
+    <div>
+      <ul>
+        <li>Single-node mode: in-memory state + local files — the dev / one-team default.</li>
+        <li>Now built: <strong>stateless replicas</strong> on OpenShift/RHOS, all shared state in a <strong>CloudNativePG</strong> Postgres cluster — any pod serves any request.</li>
+        <li>The hard part — the delayed page — is a <span class="mono">page_at</span> column + a reconciler every replica runs (<span class="mono">FOR UPDATE SKIP LOCKED</span>) → <strong>paged exactly once</strong>, no leader election. Unit-tested on the in-memory backend.</li>
+        <li>Packaged as a <strong>Helm chart</strong> + CNPG <span class="mono">Cluster</span> CR (helm-lint/template clean); logs forward as JSON/syslog.</li>
+      </ul>
+      <div class="note am" style="margin-top:12px;border-left-color:var(--amber)"><strong>Status:</strong> all 4 phases built — store layer + schema, package split, state wired through the store + paging reconciler, and the Helm chart + CNPG CR. <strong>Not yet proven on a live cluster:</strong> the Postgres backend and a real multi-replica exactly-once paging run — that's the step between here and production.</div>
+    </div>
+    <svg viewBox="0 0 420 300" role="img" aria-label="kubernetes topology">
+      <style>.k{fill:#161b22;stroke:#2a313c}.kt{fill:#e6edf3;font:600 13px ui-sans-serif}.ks{fill:#7d8590;font:11px ui-sans-serif}.kl{stroke:#39c5cf;stroke-width:1.5;fill:none}</style>
+      <rect x="10" y="10" width="400" height="280" rx="12" fill="none" stroke="#2a313c" stroke-dasharray="5 4"/>
+      <text class="ks" x="22" y="30">OpenShift / Kubernetes</text>
+      <rect class="k" x="150" y="44" width="120" height="34" rx="8"/><text class="kt" x="210" y="66" text-anchor="middle">Route → Service</text>
+      <rect class="k" x="40" y="110" width="100" height="50" rx="8"/><text class="kt" x="90" y="132" text-anchor="middle">nanny</text><text class="ks" x="90" y="150" text-anchor="middle">replica</text>
+      <rect class="k" x="160" y="110" width="100" height="50" rx="8"/><text class="kt" x="210" y="132" text-anchor="middle">nanny</text><text class="ks" x="210" y="150" text-anchor="middle">replica</text>
+      <rect class="k" x="280" y="110" width="100" height="50" rx="8"/><text class="kt" x="330" y="132" text-anchor="middle">nanny</text><text class="ks" x="330" y="150" text-anchor="middle">replica</text>
+      <rect x="120" y="210" width="180" height="56" rx="10" fill="#11202a" stroke="#39c5cf"/><text x="210" y="234" text-anchor="middle" fill="#39c5cf" font-weight="700" font-size="14">CNPG Postgres</text><text class="ks" x="210" y="252" text-anchor="middle">HA · single source of truth</text>
+      <path class="kl" d="M210,78 L210,108"/>
+      <path class="kl" d="M90,160 C90,190 160,200 200,210"/>
+      <path class="kl" d="M210,160 L210,208"/>
+      <path class="kl" d="M330,160 C330,190 260,200 220,210"/>
+    </svg>
+  </div>
+</section>
+
+<!-- 12 HOW IT'S BUILT -->
+<section class="slide">
+  <div class="kicker">engineering</div>
+  <h2>Deliberately <span class="k">small and legible</span></h2>
+  <div class="grid cols2">
+    <div>
+      <ul>
+        <li>Python, stdlib HTTP server, no web framework.</li>
+        <li>Console is hand-written HTML/CSS/JS — <strong>zero JS dependencies</strong>, no build step.</li>
+        <li>Single supervised image; runs non-root (uid 10001).</li>
+        <li>Brain-agnostic: cloud / local / none. Logs forward as JSON or syslog.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Honest trade-off</h3>
+      <p style="color:var(--ink)">"Small and legible" started as <strong>one file, single node</strong>. The Kubernetes/CNPG work (slide 11) is what turns it into a horizontally-scalable, durable system — now built, with a live-cluster verification pass still to go.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 13 DISCLOSURE DIVIDER -->
+<section class="slide center">
+  <div class="kicker" style="color:var(--red)">full disclosure</div>
+  <h1 style="font-size:clamp(30px,5vw,60px)">The honest part 🔦</h1>
+  <p class="lead">Security audit — what we hardened, and what's still open.</p>
+</section>
+
+<!-- 14 SECURITY: HARDENED -->
+<section class="slide">
+  <div class="kicker">security audit — what got fixed</div>
+  <h2>Auth is now <span class="ok">hardened</span></h2>
+  <table>
+    <tr><th>#</th><th>Was</th><th>Now</th></tr>
+    <tr><td>F2</td><td>32-bit token in the URL, never expired</td><td class="ok">256-bit bearer token in a header; idle + absolute expiry; logout</td></tr>
+    <tr><td>F3</td><td>Endpoints open when LDAP off (default)</td><td class="ok">Auth required on every endpoint; ldap / password / opt-in name-only</td></tr>
+    <tr><td>F4</td><td>Anyone could forge pages &amp; tickets</td><td class="ok">Webhooks require a token (HMAC-SHA256 or bearer)</td></tr>
+    <tr><td>F5</td><td>Login brute-forceable</td><td class="ok">Per-IP rate-limit → 429 lockout</td></tr>
+    <tr><td>F8</td><td>Stored XSS via a runbook URL</td><td class="ok"><span class="mono">safeUrl()</span> http(s)-only + escaping</td></tr>
+    <tr><td>F1</td><td>Secrets exposed in <span class="mono">nanny.env</span></td><td class="ok">Old credentials rotated/revoked; file locked to <span class="mono">0600</span> + sanitized <span class="mono">.env.example</span> (dead strings scrubbed next)</td></tr>
+    <tr><td>F9 / F11</td><td>Unbounded body · ephemeral audit log</td><td class="ok">Body cap (partial) · audit log forwards to stdout/syslog</td></tr>
+  </table>
+  <p class="muted" style="margin-top:10px;font-size:14px">Also verified clean: the SSH log-reader (forced command, no shell, allow-listed) — genuine defense-in-depth.</p>
+</section>
+
+<!-- 15 SECURITY: OPEN -->
+<section class="slide">
+  <div class="kicker">security audit — still open</div>
+  <h2>What remains — <span class="open">no hiding it</span></h2>
+  <div class="grid cols2">
+    <div class="card"><div class="ico">🔐</div><h3>F6 · TLS verification</h3><p>Icinga TLS can be disabled/downgraded (<span class="mono">ICINGA_INSECURE</span>, legacy ciphers). Needs default-verify + pinned CA.</p></div>
+    <div class="card"><div class="ico">🎭</div><h3>F7 · CSRF</h3><p>No CSRF/Origin check on JSON mutating endpoints yet.</p></div>
+    <div class="card"><div class="ico">🧠</div><h3>F10 · Prompt injection</h3><p>Attacker-influenced alert text reaches the LLM; needs delimiting/guarding.</p></div>
+    <div class="card"><div class="ico">🗄️</div><h3>F11 · Durable audit (full)</h3><p>Forwarding done; a tamper-evident store + verified operator identity → SIEM is the rest.</p></div>
+  </div>
+  <p class="muted" style="margin-top:12px;font-size:14px">Plus low-severity items: error-message leakage (F12), query escaping (F13), dependency pinning (F14), scan-pivot exposure (F15). Full report: <span class="mono">SECURITY_AUDIT.md</span>.</p>
+</section>
+
+<!-- 16 AI + OPS RISKS -->
+<section class="slide">
+  <div class="kicker">honest limitations</div>
+  <h2>What can go <span class="k">wrong</span></h2>
+  <div class="grid cols2">
+    <div class="card"><div class="ico">🧠</div><h3>LLM is fallible</h3><p>Triage can be wrong or vaguely confident; prompt-injection risk (F10) and token cost. Treat its analysis as a <em>hint</em>. (Or run <span class="tag">none</span>.)</p></div>
+    <div class="card"><div class="ico">🌐</div><h3>Environment-bound networking</h3><p>In the laptop demo the rootless-container→VPN path is intermittent (Icinga &amp; LDAP both needed retries). A real in-network deploy avoids it.</p></div>
+    <div class="card"><div class="ico">🗄️</div><h3>HA: built, not cluster-proven</h3><p>The stateless/CNPG work (slide 11) is built but not yet verified on a live cluster — single-node in-memory stays the proven default until then.</p></div>
+    <div class="card"><div class="ico">🧪</div><h3>Maturity</h3><p>A capable single-author tool, hardening fast — not yet a battle-tested product across teams.</p></div>
+  </div>
+</section>
+
+<!-- 17 SOC2 + FIT -->
+<section class="slide">
+  <div class="kicker">compliance &amp; fit</div>
+  <h2>SOC 2: <span class="open">closer, not certified</span></h2>
+  <div class="grid cols2">
+    <div>
+      <p class="muted" style="margin-top:0">Logical-access (CC6) gaps are largely closed — auth, expiry, rate-limit, signed webhooks. Remaining: CC7 durable/tamper-evident audit (forwarding done; SIEM + verified identity pending), plus F6/F7.</p>
+      <p style="font-weight:700;margin-bottom:.2em">Good fit today</p>
+      <ul class="plain"><li class="ok">✓ A single ops team's on-call, behind a VPN</li><li class="ok">✓ Cutting page-fatigue + auto-documenting incidents</li><li class="ok">✓ Teams who want a legible, self-hosted tool — cloud, local, or no LLM</li></ul>
+    </div>
+    <div>
+      <p style="font-weight:700;margin-bottom:.2em">Not yet a fit</p>
+      <ul class="plain"><li class="crit">✗ Internet-exposed without F6/F7 closed</li><li class="crit">✗ Multi-replica HA until the CNPG migration is verified on a cluster</li><li class="crit">✗ "Set it and forget it" auto-remediation (by design, it doesn't)</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- 18 ROADMAP / CLOSE -->
+<section class="slide center">
+  <div class="kicker">where it's going</div>
+  <h2>Roadmap &amp; the honest bottom line</h2>
+  <div class="grid cols3" style="width:100%">
+    <div class="card"><div class="ico">☸️</div><h3>Stateless on K8s</h3><p>Verify the CNPG backend + multi-replica exactly-once paging on a real OpenShift cluster.</p></div>
+    <div class="card"><div class="ico">🔐</div><h3>Close the audit</h3><p>F6 TLS, F7 CSRF, F10 prompt-guarding, F11 SIEM audit trail.</p></div>
+    <div class="card"><div class="ico">💬</div><h3>Interactive Slack</h3><p>Block Kit messages with ACK/Claim buttons.</p></div>
+  </div>
+  <p class="lead" style="margin-top:22px"><strong>Bottom line:</strong> nanny already does the repetitive first-responder work, stops needless pages, and is now auth-hardened. It's becoming a scalable, durable system — and you know exactly which gaps remain between here and there.</p>
+  <p class="brand" style="margin-top:18px;font-size:22px">nanny 🍼 — thanks.</p>
+</section>
+
+</div>
+
+<div class="dots" id="dots"></div>
+<div id="hud"><b id="cur">1</b> / <span id="tot">18</span></div>
+<div id="help">← → / space · <span class="mono">f</span> fullscreen</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0; const tot=slides.length;
+  const dots=document.getElementById('dots');
+  slides.forEach((_,n)=>{const d=document.createElement('i');d.onclick=()=>go(n);dots.appendChild(d);});
+  document.getElementById('tot').textContent=tot;
+  function go(n){
+    i=Math.max(0,Math.min(tot-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    [...dots.children].forEach((d,k)=>d.classList.toggle('on',k===i));
+    document.getElementById('bar').style.width=((i+1)/tot*100)+'%';
+    document.getElementById('cur').textContent=i+1;
+    location.hash=i+1;
+  }
+  function next(d){go(i+d);}
+  addEventListener('keydown',e=>{
+    if(['ArrowRight',' ','PageDown'].includes(e.key)){next(1);e.preventDefault();}
+    else if(['ArrowLeft','PageUp'].includes(e.key)){next(-1);e.preventDefault();}
+    else if(e.key==='Home')go(0); else if(e.key==='End')go(tot-1);
+    else if(e.key==='f'){if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();}
+  });
+  let sx=null; addEventListener('touchstart',e=>sx=e.touches[0].clientX,{passive:true});
+  addEventListener('touchend',e=>{if(sx==null)return;const dx=e.changedTouches[0].clientX-sx;if(Math.abs(dx)>50)next(dx<0?1:-1);sx=null;},{passive:true});
+  go(parseInt(location.hash.slice(1))-1||0);
+</script>
+</body></html>

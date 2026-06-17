@@ -1,0 +1,17 @@
+# Rendered from env at container start (entrypoint runs envsubst).
+# Alertmanager forwards firing AND resolved alerts to nanny's webhook; nanny
+# owns the page decision (adaptive hold) and the Jira/Slack side. So the only
+# receiver here is the nanny webhook — paging happens in nanny via the PD
+# Events API, not directly from Alertmanager.
+route:
+  receiver: nanny
+  group_by: ['alertname', 'service', 'instance']
+  group_wait: 30s          # brief batch window for related alerts
+  group_interval: 5m       # how often to send updates for an existing group
+  repeat_interval: 1h      # re-notify nanny while an alert is still firing
+
+receivers:
+  - name: nanny
+    webhook_configs:
+      - url: 'http://localhost:9099/'
+        send_resolved: true   # nanny needs the resolved event to cancel the page

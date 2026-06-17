@@ -1,0 +1,28 @@
+nanny {{ .Chart.AppVersion }} deployed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Replicas:   {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.minReplicas }}–{{ .Values.autoscaling.maxReplicas }} (HPA){{ else }}{{ .Values.replicaCount }}{{ end }}
+Auth mode:  {{ .Values.auth.mode }}
+Triage:     {{ .Values.llm.backend }}{{ if .Values.dryRun }}  (DRY RUN — no real side-effects){{ end }}
+Backend:    {{ if .Values.postgres.enabled }}CloudNativePG cluster "{{ include "nanny.dbCluster" . }}" ({{ .Values.postgres.instances }} instances){{ else if .Values.databaseUrlSecret.name }}external Postgres (secret "{{ .Values.databaseUrlSecret.name }}"){{ else }}MemoryStore — EPHEMERAL, single-replica only! Set postgres.enabled=true for HA.{{ end }}
+
+Reach the console:
+{{- if .Values.route.enabled }}
+  oc get route {{ include "nanny.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.host}{"\n"}'
+{{- else if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.host }}/
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "nanny.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  then open http://localhost:{{ .Values.service.port }}/
+{{- end }}
+
+Point Alertmanager/Icinga webhooks at:  POST <console-url>/alert  and  /icinga
+{{- if not .Values.webhookToken }}{{ if not .Values.existingSecret }}
+  WARNING: webhookToken is unset — /alert and /icinga are UNAUTHENTICATED. Set
+  webhookToken (or provide it via existingSecret) and sign webhooks with it.
+{{- end }}{{ end }}
+{{- if and .Values.postgres.enabled (not .Values.databaseUrlSecret.name) }}
+
+Postgres readiness (CNPG):
+  kubectl -n {{ .Release.Namespace }} get cluster {{ include "nanny.dbCluster" . }}
+  nanny pods stay NotReady (via /readyz) until the database accepts connections.
+{{- end }}

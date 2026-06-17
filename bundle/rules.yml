@@ -1,0 +1,23 @@
+groups:
+  - name: nanny-probes
+    rules:
+      # A probe must fail continuously for `for:` before the alert fires — this
+      # is the "confirm before paging" delay (the equivalent of the retry/backoff
+      # that absorbed transient blips in the standalone monitor loop).
+      - alert: ServiceDown
+        expr: probe_success == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} down on {{ $labels.instance }}"
+          description: "Blackbox probe_success=0 for {{ $labels.instance }} ({{ $labels.service }}) for 3m+."
+
+      # Warn early on slow TLS expiry, as an example of a softer tier.
+      - alert: TLSCertExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 14
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS cert for {{ $labels.instance }} expires within 14 days"

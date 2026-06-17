@@ -1,0 +1,90 @@
+# Containerfile.bundle — nanny + the Prometheus probing/alerting substrate, one image.
+#
+#   Build:  podman build -t nanny:bundle -f Containerfile.bundle .
+#
+# One image, four supervised processes:
+#   - blackbox_exporter : probes your services (TCP/HTTP)             :9115
+#   - prometheus        : scrapes blackbox, evaluates alert rules     :9090
+#   - alertmanager      : groups/dedupes, routes to PagerDuty + Slack :9093
+#   - nanny run         : the LLM triage brain (Slack watcher)
+#
+# Run the bundle. A named volume is simplest — Podman creates it with the image's
+# nanny ownership, so no host dir to pre-create and no uid juggling.
+#   podman run -d --name nanny --restart=on-failure \
+#     --env-file ./nanny.env -p 9099:9099 \
+#     -v nanny-data:/data \
+#     -v ~/.ssh/nanny_key:/run/secrets/nanny_key:ro,Z \
+#     nanny:bundle
+#
+# Discover first so Prometheus has targets (writes to /data/targets):
+#   podman run --rm --env-file ./nanny.env -v nanny-data:/data \
+#     nanny:bundle discover --cidr 10.0.1.0/24
+#
+# Want the data on the host instead? Create the dir first (Podman won't make a
+# bind-mount source) and use ./data:/data:Z — the entrypoint fixes ownership:
+#   mkdir -p ./data && ... -v ./data:/data:Z ...
+#
+# Or run a single nanny mode instead of the bundle (override the command):
+#   podman run --rm -it --env-file ./nanny.env nanny:bundle shell
+#   podman run --rm     --env-file ./nanny.env nanny:bundle selftest
+
+FROM python:3.12-slim
+
+# Pin component versions — verify/bump against each project's GitHub releases page.
+ARG PROMETHEUS_VERSION=3.11.2
+ARG ALERTMANAGER_VERSION=0.32.1
+ARG BLACKBOX_VERSION=0.27.0
+ARG TARGETARCH=amd64
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openssh-client tini ca-certificates curl supervisor gettext-base gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+# Fetch the Apache-2.0 Go binaries, vendoring each LICENSE + NOTICE into /licenses
+# to satisfy the attribution clause when redistributing the image.
+RUN set -eux; \
+    mkdir -p /usr/local/bin /licenses; cd /tmp; \
+    fetch() { curl -fsSL "$1" -o c.tgz; tar xzf c.tgz; \
+              cp "$2/LICENSE" "/licenses/$3.LICENSE" 2>/dev/null || true; \
+              cp "$2/NOTICE"  "/licenses/$3.NOTICE"  2>/dev/null || true; }; \
+    P="prometheus-${PROMETHEUS_VERSION}.linux-${TARGETARCH}"; \
+    fetch "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/${P}.tar.gz" "$P" prometheus; \
+    cp "$P/prometheus" "$P/promtool" /usr/local/bin/; \
+    A="alertmanager-${ALERTMANAGER_VERSION}.linux-${TARGETARCH}"; \
+    fetch "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/${A}.tar.gz" "$A" alertmanager; \
+    cp "$A/alertmanager" "$A/amtool" /usr/local/bin/; \
+    B="blackbox_exporter-${BLACKBOX_VERSION}.linux-${TARGETARCH}"; \
+    fetch "https://github.com/prometheus/blackbox_exporter/releases/download/v${BLACKBOX_VERSION}/${B}.tar.gz" "$B" blackbox_exporter; \
+    cp "$B/blackbox_exporter" /usr/local/bin/; \
+    rm -rf /tmp/*
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY nanny.py .
+COPY nanny/ ./nanny/
+COPY db/ ./db/
+
+# Config + orchestration.
+COPY bundle/blackbox.yml         /etc/nanny/blackbox.yml
+COPY bundle/prometheus.yml       /etc/nanny/prometheus.yml
+COPY bundle/rules.yml            /etc/nanny/rules.yml
+COPY bundle/alertmanager.yml.tmpl /etc/nanny/alertmanager.yml.tmpl
+COPY bundle/supervisord.conf     /etc/nanny/supervisord.conf
+COPY bundle/entrypoint.sh        /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Create the app user and seed writable dirs. The container STARTS as root so the
+# entrypoint can chown the mounted /data to nanny, then drops to nanny (gosu /
+# supervisord user=). This makes bind mounts work regardless of host ownership
+# or podman uid-mapping — no --userns flags needed.
+ENV NANNY_DATA_DIR=/data
+ENV NANNY_TARGETS_DIR=/data/targets
+RUN useradd --create-home --uid 10001 nanny \
+    && mkdir -p /etc/nanny /data/targets /data/prometheus /data/alertmanager /home/nanny/.ssh \
+    && chown -R nanny:nanny /etc/nanny /data /home/nanny \
+    && chmod 700 /home/nanny/.ssh
+
+EXPOSE 9090 9093 9115
+ENTRYPOINT ["tini", "--", "/usr/local/bin/entrypoint.sh"]
+CMD ["bundle"]

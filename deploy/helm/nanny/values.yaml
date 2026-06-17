@@ -1,0 +1,168 @@
+# Default values for the nanny chart. See ARCHITECTURE.md for the design.
+# Everything sensitive (passwords, tokens, API keys) belongs in `secretEnv` or an
+# `existingSecret`, never in a committed values file.
+
+replicaCount: 2                 # stateless — safe to scale; reconciler runs in each
+
+image:
+  repository: nanny             # e.g. quay.io/yourorg/nanny
+  tag: ""                       # defaults to .Chart.appVersion
+  pullPolicy: IfNotPresent
+pullSecrets: []                 # [{name: my-pull-secret}]
+
+# nanny runs in "server" mode: Alertmanager/Icinga webhook + operator API + the
+# paging reconciler. (The lean Containerfile's ENTRYPOINT is `python nanny.py`.)
+args: ["server"]
+
+nameOverride: ""
+fullnameOverride: ""
+
+service:
+  type: ClusterIP
+  port: 9099                    # NANNY_SERVER_PORT inside the pod
+
+# OpenShift Route (edge-terminated TLS). On vanilla k8s set route.enabled=false and
+# bring your own Ingress.
+route:
+  enabled: true
+  host: ""                      # "" lets OpenShift assign <name>-<ns>.apps.<cluster>
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  annotations: {}
+
+ingress:                        # alternative to route for non-OpenShift
+  enabled: false
+  className: ""
+  host: nanny.example.com
+  tls: []
+  annotations: {}
+
+reconcileSecs: 5                # NANNY_RECONCILE_SECS — reconciler poll interval
+
+# ── auth (web console) ────────────────────────────────────────────────────────
+# mode: ldap | password | open. nanny derives the mode from which env vars are set;
+# this chart sets the matching ones.
+auth:
+  mode: password
+  password: ""                  # NANNY_AUTH_PASSWORD (→ secret) when mode=password
+  insecure: false              # mode=open requires this true (NANNY_AUTH_INSECURE)
+  ldap: {}                      # mode=ldap: NANNY_LDAP_* key/values (non-secret ones
+                                # here; put NANNY_LDAP_* secrets in secretEnv)
+
+# Shared secret Alertmanager/Icinga sign webhooks with (HMAC-SHA256 or bearer).
+# STRONGLY recommended — unset means /alert and /icinga are open.
+webhookToken: ""                # NANNY_WEBHOOK_TOKEN (→ secret)
+
+# ── triage brain ──────────────────────────────────────────────────────────────
+llm:
+  backend: none                 # NANNY_LLM_BACKEND: anthropic | openai | none
+  anthropicApiKey: ""           # ANTHROPIC_API_KEY (→ secret)
+  extraEnv: {}                  # e.g. NANNY_LLM_BASE_URL for an in-cluster vLLM/Ollama
+
+dryRun: false                   # NANNY_DRY_RUN — simulate side-effects (demo only)
+
+logging:
+  json: true                    # NANNY_LOG_JSON — structured stdout for OpenShift logging
+  syslog: ""                    # NANNY_LOG_SYSLOG host:port (optional → SIEM)
+
+# Non-secret integration config (Jira base url, Icinga url, fleet source, etc.).
+# Map of ENV_NAME: value, injected verbatim.
+env: {}
+  # JIRA_BASE_URL: https://yourorg.atlassian.net
+  # ICINGA_API_URL: https://icinga01.vm.example:5665
+  # ICINGA_INSECURE: "true"
+
+# Secret integration config (API tokens). Map of ENV_NAME: value → templated Secret.
+# Prefer `existingSecret` for GitOps so secrets never touch values.yaml.
+secretEnv: {}
+  # ATLASSIAN_API_TOKEN: ""
+  # SLACK_BOT_TOKEN: ""
+  # PAGERDUTY_API_TOKEN: ""
+  # ICINGA_API_PASSWORD: ""
+
+# Use a pre-created Secret (envFrom) instead of templating one from secretEnv/auth.
+# When set, auth.password/webhookToken/llm.anthropicApiKey/secretEnv are ignored.
+existingSecret: ""
+
+# ── CloudNativePG backend ─────────────────────────────────────────────────────
+# Requires the CNPG operator (CRDs) pre-installed in the cluster. When enabled,
+# DATABASE_URL is read from the generated "<fullname>-db-app" secret's `uri` key.
+postgres:
+  enabled: true
+  instances: 3                  # 1 primary + 2 replicas (HA)
+  storage:
+    size: 5Gi
+    storageClass: ""            # "" = cluster default
+  imageName: ""                 # "" = CNPG operator default
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  bootstrapDatabase: nanny
+  bootstrapOwner: nanny
+
+# When postgres.enabled=false, point nanny at an external Postgres: a secret with a
+# connection-string key. Leave name="" with postgres.enabled=true to auto-derive.
+databaseUrlSecret:
+  name: ""
+  key: uri
+
+# ── scheduling / resources ────────────────────────────────────────────────────
+resources:
+  requests: {cpu: 50m, memory: 128Mi}
+  limits: {cpu: 500m, memory: 512Mi}
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 75
+
+# Spread replicas across nodes so a node loss never drops the whole service.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector: {}           # filled with the chart selector at render time
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}
+podLabels: {}
+
+# OpenShift's restricted-v2 SCC assigns an arbitrary uid and ignores runAsUser, so
+# we DON'T pin runAsUser by default — the image's USER 10001 applies on plain k8s,
+# and OpenShift's random uid is fine (state is in Postgres; only /data emptyDir is
+# written, group-writable). Set runAsUser/fsGroup explicitly if your platform needs it.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+  # runAsUser: 10001
+  # fsGroup: 10001
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true  # nanny writes only to the /data emptyDir + /tmp
+  capabilities:
+    drop: ["ALL"]
+
+# Probes hit the in-pod HTTP server. Readiness checks store (DB) connectivity.
+livenessProbe:
+  httpGet: {path: /healthz, port: http}
+  initialDelaySeconds: 10
+  periodSeconds: 15
+readinessProbe:
+  httpGet: {path: /readyz, port: http}
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+terminationGracePeriodSeconds: 30
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

@@ -1,0 +1,22 @@
+apiVersion: v2
+name: nanny
+description: >-
+  nanny — the on-call triage brain, deployed as stateless replicas on
+  Kubernetes/OpenShift with a CloudNativePG Postgres backend. Every pod runs the
+  paging reconciler; durable state lives in Postgres so pods scale and restart
+  freely. See ../../../ARCHITECTURE.md.
+type: application
+version: 0.1.0
+appVersion: "0.4.0"
+keywords:
+  - on-call
+  - incident-response
+  - sre
+  - openshift
+home: https://github.com/  # set to your repo
+maintainers:
+  - name: Viktor Vondrak
+annotations:
+  # CNPG is an optional dependency the cluster admin installs out-of-band (an
+  # Operator), not a Helm subchart — its CRDs must exist before postgres.enabled.
+  required-operators: "cloudnative-pg (when postgres.enabled=true)"

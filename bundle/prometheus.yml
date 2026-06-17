@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['localhost:9093']
+
+rule_files:
+  - /etc/nanny/rules.yml
+
+scrape_configs:
+  # Blackbox multi-target pattern: each file_sd entry is a probe target; the
+  # __param_module label (set by `nanny discover`) selects http_2xx vs tcp_connect.
+  - job_name: blackbox
+    metrics_path: /probe
+    file_sd_configs:
+      - files: ['/data/targets/*.json']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: localhost:9115   # the bundled blackbox_exporter
+
+  # Optional: scrape the substrate's own health.
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']

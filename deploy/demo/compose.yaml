@@ -1,0 +1,50 @@
+# nanny — self-contained demo (podman-compose / docker compose)
+#
+#   cd deploy/demo
+#   NANNY_NTFY_TOPIC=my-unique-nanny-demo docker compose up --build
+#
+# Brings up a single nanny container in demo mode: it injects synthetic incidents on a
+# loop and drives the whole discover -> triage -> hold -> page -> resolve lifecycle with
+# NO real integrations. Notifications (incl. the page) go to ntfy.sh on your topic;
+# subscribe from the ntfy phone app or a browser. Side effects run dry (fake DRY-xxxx
+# tickets), triage is the offline no-LLM path — so it needs no tokens or API keys.
+#
+# Open the console at http://localhost:9099  (log in with any name + password 'demo').
+
+services:
+  nanny:
+    build:
+      context: ../..
+      dockerfile: Containerfile
+    image: nanny:demo
+    command: ["demo"]
+    ports:
+      - "9099:9099"
+    environment:
+      # ── ntfy channel ──────────────────────────────────────────────────────
+      # Pick a UNIQUE topic — on public ntfy.sh anyone who knows it can read it.
+      # If you leave it blank, nanny generates one and prints it in the logs.
+      NANNY_NTFY_TOPIC: "${NANNY_NTFY_TOPIC:-}"
+      NANNY_NTFY_URL: "${NANNY_NTFY_URL:-https://ntfy.sh}"
+      # ── interactive page buttons (optional) ───────────────────────────────
+      # For tap-to-Ack/Claim from your phone, set this to a URL the PHONE can reach
+      # nanny at (your laptop's LAN IP or a tunnel), e.g. http://192.168.1.50:9099.
+      # Leave blank for notify-only pages.
+      NANNY_PUBLIC_URL: "${NANNY_PUBLIC_URL:-}"
+      # ── console login ─────────────────────────────────────────────────────
+      NANNY_AUTH_PASSWORD: "${NANNY_AUTH_PASSWORD:-demo}"
+      # data dir for the generated topic/token (kept on /tmp so it needs no volume)
+      NANNY_DATA_DIR: /tmp/nanny
+    restart: on-failure
+
+# ── Fully-offline option (no internet / no public topic) ────────────────────────
+# Uncomment to run your OWN ntfy server in the compose and point nanny at it. Then
+# set NANNY_NTFY_URL=http://ntfy (above) and subscribe the ntfy app to http://<host>:8080.
+#
+#  ntfy:
+#    image: binwiederhier/ntfy:latest   # the official ntfy server image
+#    command: ["serve"]
+#    ports:
+#      - "8080:80"
+#    environment:
+#      NTFY_BASE_URL: "http://localhost:8080"

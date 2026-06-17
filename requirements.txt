@@ -1,0 +1,6 @@
+anthropic>=0.40
+slack-bolt>=1.18
+requests>=2.31
+rich>=13
+ldap3>=2.9            # optional: web-console LDAP/AD auth (NANNY_LDAP_URL)
+psycopg[binary]>=3.1  # optional: CloudNativePG durable state backend (DATABASE_URL)
