@@ -17,7 +17,8 @@
 ![Podman](https://img.shields.io/badge/runs%20on-Podman-892CA0?logo=podman&logoColor=white)
 ![Prometheus](https://img.shields.io/badge/built%20on-Prometheus-E6522C?logo=prometheus&logoColor=white)
 ![Anthropic](https://img.shields.io/badge/brain-Claude-D4A27F)
-![License](https://img.shields.io/badge/components-Apache--2.0-green)
+![License](https://img.shields.io/badge/license-BSL%201.1-blue)
+![Components](https://img.shields.io/badge/components-Apache--2.0-green)
 ![Status](https://img.shields.io/badge/version-1.0-brightgreen)
 
 </div>
@@ -241,6 +242,14 @@ All configuration is environment variables — see [`nanny.env.example`](./nanny
 | Fleet source | Icinga2 REST API *(or a TCP-connect network scan)* |
 | Integrations | Jira & Confluence Cloud · PagerDuty · Slack |
 | Packaging | Podman / OCI · supervisord · tini |
+
+---
+
+## 📜 License
+
+nanny's own source is licensed under the **Business Source License 1.1** (BSL 1.1) — see [`LICENSE`](./LICENSE). You may copy, modify, and self-host it, including in production, **except** offering it to third parties as a hosted/managed on-call, monitoring, alerting, or incident-triage service (a "nanny Service") — that needs a separate commercial license. Four years after each version is published it converts to **Apache-2.0**. BSL 1.1 is source-available, not an OSI open-source license.
+
+The bundled monitoring binaries (Prometheus, Alertmanager, blackbox_exporter) remain under their own **Apache-2.0** licenses, vendored into `/licenses` in the image.
 
 ---
 
